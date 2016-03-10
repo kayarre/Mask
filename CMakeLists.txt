@@ -1,19 +1,34 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.0)
 
 project(Mask)
 SET(CMAKE_INCLUDE_CURRENT_DIR ON)
-enable_testing()
 
-add_subdirectory(CMakeHelpers)
+# Only include Helpers if it is not already available
+get_property(FoundITKHelpers GLOBAL PROPERTY ITKHelpersIncludeDirs SET)
+if(NOT FoundITKHelpers)
+  add_subdirectory(ITKHelpers)
+endif()
 
-UseSubmodule(ITKHelpers Mask)
+get_property(ITKHelpersIncludeDirs GLOBAL PROPERTY ITKHelpersIncludeDirs)
+set(Mask_include_dirs ${Mask_include_dirs} ${ITKHelpersIncludeDirs})
+get_property(ITKHelpersLibs GLOBAL PROPERTY ITKHelpersLibs)
+set(Mask_libraries ${Mask_libraries} ${ITKHelpersLibs})
 
 # Enable c++11
 if(UNIX)
-  message("System is UNIX - enabling C++11")
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=gnu++11")
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DHAS_CPP11") # Can't use HAS_C++11 - it doesn't like the + characters in the define
 endif(UNIX)
+
+# VTK
+option(MaskUseVTK "Enable VTK functions in MaskOperations?" OFF)
+if(MaskUseVTK)
+  FIND_PACKAGE(VTK)
+  if(VTK_FOUND)
+    INCLUDE(${VTK_USE_FILE})
+    set(Mask_libraries ${Mask_libraries} ${VTK_LIBRARIES})
+    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DMASK_USE_VTK")
+  endif()
+endif()
 
 # ITK
 if(NOT ITK_FOUND)
@@ -23,7 +38,7 @@ if(NOT ITK_FOUND)
   INCLUDE(${ITK_USE_FILE})
 
   if( "${ITK_VERSION_MAJOR}" LESS 4 )
-    MESSAGE(FATAL_ERROR "You must build Mask with ITK >= 4.0!")
+    MESSAGE(FATAL_ERROR "You must build ImageGraphCutSegmentation with ITK >= 4.0!")
   endif( "${ITK_VERSION_MAJOR}" LESS 4 )
 endif()
 set(Mask_libraries ${Mask_libraries} ${ITK_LIBRARIES})
@@ -32,55 +47,42 @@ set(Mask_libraries ${Mask_libraries} ${ITK_LIBRARIES})
 include_directories(${Mask_include_dirs})
 
 # Create the library
-add_library(Mask Mask.cpp MaskOperations.cpp
-ForegroundBackgroundSegmentMask.cpp
-StrokeMask.cpp)
+add_library(Mask Mask.cpp MaskOperations.cpp)
 target_link_libraries(Mask ${Mask_libraries})
 set(Mask_libraries ${Mask_libraries} Mask)
 
 # Add non-compiled sources to the project
-add_custom_target(MaskSources SOURCES
-ForegroundBackgroundSegmentMask.h
-ForegroundBackgroundSegmentMask.hpp
-Mask.h
-Mask.hpp
-StrokeMask.h
-StrokeMask.hpp
-MaskQt.h
-MaskVTK.h
-MaskVTK.hpp
-MaskOperations.hpp
-#SegmentMask.h
-)
+add_custom_target(MaskSources SOURCES Mask.h MaskQt.h Mask.hpp MaskOperations.hpp)
 
 # Only build the MaskQt library if the user wants it
-option(Mask_BuildMaskQt "Build MaskQt?")
+SET(Mask_BuildMaskQt OFF CACHE BOOL "Build MaskQt?")
 if(Mask_BuildMaskQt)
-  FIND_PACKAGE(Qt4 REQUIRED)
-  INCLUDE(${QT_USE_FILE})
+  find_package(Qt5 COMPONENTS Core Gui Widgets Declarative Concurrent REQUIRED)
 
-  add_library(MaskQt MaskQt.cpp)
-  target_link_libraries(MaskQt Mask)
-  set(Mask_libraries ${Mask_libraries} MaskQt)
+  # The Qt5Widgets_INCLUDES also includes the include directories for
+  # dependencies QtCore and QtGui
+  include_directories(${Qt5Widgets_INCLUDES})
+
+  # We need add -DQT_WIDGETS_LIB when using QtWidgets in Qt 5.
+  #add_definitions(${Qt5Widgets_DEFINITIONS})
+  
+  add_library(MaskQt Mask.cpp MaskQt.cpp )
+  target_link_libraries(MaskQt Qt5::Widgets Qt5::Gui)
 endif(Mask_BuildMaskQt)
 
-# Only build the MaskVTK library if the user wants it
-option(Mask_BuildMaskVTK "Build MaskVTK?")
-if(Mask_BuildMaskVTK)
-  FIND_PACKAGE(VTK REQUIRED)
-  INCLUDE(${VTK_USE_FILE})
-  set(Mask_libraries ${Mask_libraries} ${VTK_LIBRARIES})
-
-  add_library(MaskVTK MaskVTK.cpp)
-  target_link_libraries(MaskVTK Mask)
-  set(Mask_libraries ${Mask_libraries} MaskVTK)
-endif(Mask_BuildMaskVTK)
-
 # Allow this project to be detected and used as a submodule
-CreateSubmodule(Mask)
+set(Mask_include_dirs ${Mask_include_dirs} ${CMAKE_CURRENT_SOURCE_DIR})
+set_property(GLOBAL PROPERTY MaskIncludeDirs ${Mask_include_dirs})
+set_property(GLOBAL PROPERTY MaskLibs ${Mask_libraries})
 
 # Build the tests if requested
 option(Mask_BuildTests "Build Mask tests?" OFF)
 if(Mask_BuildTests)
   add_subdirectory(Tests)
 endif(Mask_BuildTests)
+
+# Display where this code was used from (if it is used as a submodule, there may be multiple instances of this submodule in the project, only the first of which is used)
+option(Mask_ShowSubmoduleLocation "Show the path from which Mask was used?" OFF)
+if(Mask_ShowSubmoduleLocation)
+  message("Mask used from ${CMAKE_CURRENT_SOURCE_DIR}")
+endif(Mask_ShowSubmoduleLocation)
