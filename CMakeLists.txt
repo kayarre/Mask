@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.0)
 
 project(Mask)
 SET(CMAKE_INCLUDE_CURRENT_DIR ON)
@@ -57,9 +57,17 @@ add_custom_target(MaskSources SOURCES Mask.h MaskQt.h Mask.hpp MaskOperations.hp
 # Only build the MaskQt library if the user wants it
 SET(Mask_BuildMaskQt OFF CACHE BOOL "Build MaskQt?")
 if(Mask_BuildMaskQt)
-  FIND_PACKAGE(Qt4)
-  INCLUDE(${QT_USE_FILE})
-  add_library(MaskQt Mask.cpp MaskQt.cpp)
+  find_package(Qt5 COMPONENTS Core Gui Widgets Declarative Concurrent REQUIRED)
+
+  # The Qt5Widgets_INCLUDES also includes the include directories for
+  # dependencies QtCore and QtGui
+  include_directories(${Qt5Widgets_INCLUDES})
+
+  # We need add -DQT_WIDGETS_LIB when using QtWidgets in Qt 5.
+  #add_definitions(${Qt5Widgets_DEFINITIONS})
+  
+  add_library(MaskQt Mask.cpp MaskQt.cpp )
+  target_link_libraries(MaskQt Qt5::Widgets Qt5::Gui)
 endif(Mask_BuildMaskQt)
 
 # Allow this project to be detected and used as a submodule
